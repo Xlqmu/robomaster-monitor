@@ -2,6 +2,7 @@
 
 ## 项目架构
 
+``` bash
 robomaster-monitor/
 ├── cmd/
 │   └── main.go              # 程序入口：执行抓取、比对、通知流程
@@ -22,3 +23,4 @@ robomaster-monitor/
 ├── go.mod
 ├── README.md
 └── Dockerfile               # 可选：打包成容器镜像
+```
