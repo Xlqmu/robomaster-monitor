@@ -1,0 +1,6 @@
+[cmd]
+forum_url = "https://bbs.robomaster.com/article"
+
+
+[feishu]
+webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/eeab5932-7217-4276-91f8-4ea5c344c7e9"
