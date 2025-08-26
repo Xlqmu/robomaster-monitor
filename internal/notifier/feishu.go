@@ -1,55 +1,122 @@
-package main
-
-// package notifier
+package notifier
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
-
-	"github.com/BurntSushi/toml"
 )
 
-type FeishuConfig struct {
-	WebhookURL string `toml:"webhook_url"`
+// FeishuCard represents the structure of an interactive message card.
+type FeishuCard struct {
+	MsgType string `json:"msg_type"`
+	Card    Card   `json:"card"`
+}
+
+type Card struct {
+	Config   Config    `json:"config"`
+	Header   Header    `json:"header"`
+	Elements []Element `json:"elements"`
 }
 
 type Config struct {
-	Feishu FeishuConfig `toml:"feishu"`
+	WideScreenMode bool `json:"wide_screen_mode"`
+	EnableForward  bool `json:"enable_forward"`
 }
 
-func sendMessage() {
-	var config Config
-	_, err := toml.DecodeFile("configs/param.toml", &config)
-	if err != nil {
-		panic(err)
-	}
+type Header struct {
+	Title    Title  `json:"title"`
+	Template string `json:"template"`
+}
 
-	webhookURL := config.Feishu.WebhookURL
+type Title struct {
+	Tag     string `json:"tag"`
+	Content string `json:"content"`
+}
 
-	msg := map[string]interface{}{
-		"msg_type": "text",
-		"content": map[string]string{
-			"text": "叮!RM论坛又有新的开源了🚀",
+type Element struct {
+	Tag     string   `json:"tag"`
+	Text    *Text    `json:"text,omitempty"`
+	Actions []Action `json:"actions,omitempty"`
+}
+
+type Text struct {
+	Tag     string `json:"tag"`
+	Content string `json:"content"`
+}
+
+type Action struct {
+	Tag  string `json:"tag"`
+	Text Text   `json:"text"`
+	URL  string `json:"url"`
+	Type string `json:"type"`
+}
+
+// Send sends a formatted notification to the provided Feishu webhook URL.
+func Send(webhookURL, title, articleLink string) error {
+	cardMsg := FeishuCard{
+		MsgType: "interactive",
+		Card: Card{
+			Config: Config{
+				WideScreenMode: true,
+				EnableForward:  true,
+			},
+			Header: Header{
+				Title: Title{
+					Tag:     "plain_text",
+					Content: "🚀 RoboMaster 论坛有新的开源内容！",
+				},
+				Template: "blue",
+			},
+			Elements: []Element{
+				{
+					Tag: "div",
+					Text: &Text{
+						Tag:     "lark_md",
+						Content: fmt.Sprintf("**%s**", title),
+					},
+				},
+				{
+					Tag: "action",
+					Actions: []Action{
+						{
+							Tag: "button",
+							Text: Text{
+								Tag:     "plain_text",
+								Content: "查看详情",
+							},
+							URL:  articleLink,
+							Type: "default",
+						},
+					},
+				},
+			},
 		},
 	}
 
-	data, err := json.Marshal(msg)
+	jsonData, err := json.Marshal(cardMsg)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to marshal feishu card json: %w", err)
 	}
 
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", webhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create http request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send feishu message: %w", err)
 	}
 	defer resp.Body.Close()
 
-	fmt.Println("Status:", resp.Status)
-}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("feishu notification failed with status code: %d", resp.StatusCode)
+	}
 
-// test
-func main() {
-	sendMessage()
+	log.Println("Feishu notification sent successfully.")
+	return nil
 }
