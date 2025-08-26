@@ -2,7 +2,7 @@ name: Check for New RoboMaster Articles
 
 on:
   schedule:
-    - cron: "15 * * * *"
+    - cron: "15 * * * *" # Runs every hour at 15 minutes past the hour
   workflow_dispatch:
 
 jobs:
@@ -18,12 +18,8 @@ jobs:
         with:
           go-version: '1.21'
 
-      # --- THIS IS THE NEW, MORE RELIABLE STEP ---
-      # This action installs a fresh version of Google Chrome and all its dependencies.
       - name: Set up Chrome
         uses: browser-actions/setup-chrome@v1
-      
-      # We no longer need the manual apt-get install step.
 
       - name: Install Go dependencies
         run: go mod tidy
@@ -33,5 +29,4 @@ jobs:
           DJI_USERNAME: ${{ secrets.DJI_USERNAME }}
           DJI_PASSWORD: ${{ secrets.DJI_PASSWORD }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-        # The 'run' command now happens after Chrome is fully set up.
         run: go run main.go
