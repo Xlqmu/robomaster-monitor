@@ -1,12 +1,8 @@
 name: Check for New RoboMaster Articles
 
 on:
-  # This runs the job every hour at the 15-minute mark (e.g., 1:15, 2:15).
-  # You can customize the schedule using https://crontab.guru
   schedule:
     - cron: "15 * * * *"
-    
-  # This also allows you to run the workflow manually from the Actions tab on GitHub.
   workflow_dispatch:
 
 jobs:
@@ -14,24 +10,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checks out your repository's code so the job can access it
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      # Step 2: Sets up the Go language environment
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21' # You can change this to your preferred Go version
+          go-version: '1.21'
 
-      # Step 3: Installs the Go dependencies (e.g., chromedp, goquery)
-      - name: Install dependencies
+      # --- THIS IS THE NEW, REQUIRED STEP ---
+      - name: Install Chrome Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxss1 libappindicator1 libindicator7 libgtk-3-0 libasound2 libnspr4 libnss3 xdg-utils fonts-liberation
+
+      - name: Install Go dependencies
         run: go mod tidy
 
-      # Step 4: Runs the monitor script
       - name: Run the monitor
         env:
-          # This securely passes your GitHub secrets to the Go program as environment variables
           DJI_USERNAME: ${{ secrets.DJI_USERNAME }}
           DJI_PASSWORD: ${{ secrets.DJI_PASSWORD }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
