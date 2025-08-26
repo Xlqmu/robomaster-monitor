@@ -1,12 +1,11 @@
-name: Check for New RoboMaster Articles
+name: Connectivity Test for RoboMaster Monitor
 
 on:
-  schedule:
-    - cron: "15 * * * *"
+  # Run this test manually
   workflow_dispatch:
 
 jobs:
-  check_articles:
+  connectivity_test:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,20 +17,20 @@ jobs:
         with:
           go-version: '1.21'
 
-      # --- THIS IS THE NEW, MORE RELIABLE STEP ---
-      # This action installs a fresh version of Google Chrome and all its dependencies.
       - name: Set up Chrome
         uses: browser-actions/setup-chrome@v1
-      
-      # We no longer need the manual apt-get install step.
 
       - name: Install Go dependencies
         run: go mod tidy
 
-      - name: Run the monitor
-        env:
-          DJI_USERNAME: ${{ secrets.DJI_USERNAME }}
-          DJI_PASSWORD: ${{ secrets.DJI_PASSWORD }}
-          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-        # The 'run' command now happens after Chrome is fully set up.
+      - name: Run the diagnostic script
         run: go run main.go
+      
+      - name: Upload screenshots as artifacts
+        if: always() # This step runs even if the previous step fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-screenshots
+          path: |
+            google_test.png
+            robomaster_test.png

@@ -2,34 +2,18 @@ package main
 
 import (
 	"context"
+	"io/ioutil"
 	"log"
-	"os"
 	"time"
 
 	"github.com/chromedp/chromedp"
-	// Use your actual module name here from go.mod
-	"robomaster-monitor/internal/crawler"
-	"robomaster-monitor/internal/notifier"
 )
 
 func main() {
-	// --- Reads configuration securely from environment variables ---
-	username := os.Getenv("DJI_USERNAME")
-	password := os.Getenv("DJI_PASSWORD")
-	webhookURL := os.Getenv("FEISHU_WEBHOOK_URL")
-
-	if username == "" || password == "" {
-		log.Fatal("Error: DJI_USERNAME and DJI_PASSWORD environment variables must be set.")
-	}
-	if webhookURL == "" {
-		log.Println("Warning: FEISHU_WEBHOOK_URL is not set. Notifications will be skipped.")
-	}
-	// --- End of Configuration ---
+	log.Println("Starting final diagnostic test...")
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		// This MUST be true for GitHub Actions.
 		chromedp.Flag("headless", true),
-		// Required flags for running in a Linux/container environment.
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
@@ -41,33 +25,39 @@ func main() {
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, 10*time.Minute)
+	ctx, cancel = context.WithTimeout(ctx, 3*time.Minute) // 3 minute timeout for the test
 	defer cancel()
 
-	if err := crawler.Login(ctx, username, password); err != nil {
-		log.Fatalf("Fatal: Initial login failed: %v", err)
+	var buf []byte
+
+	// --- Test 1: Navigate to Google ---
+	log.Println("Attempting to navigate to https://www.google.com ...")
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(`https://www.google.com`),
+		chromedp.Sleep(5*time.Second), // Wait for page to render
+		chromedp.CaptureScreenshot(&buf),
+	); err != nil {
+		log.Fatalf("Fatal: Failed to navigate to Google: %v", err)
 	}
-	log.Println("Login successful, session is active.")
-
-	// --- This is the complete pipeline logic ---
-	// For a scheduled task, we only need to check once per run.
-
-	// Step 1: Call the crawler to check for updates.
-	// It returns two values: the new article (or nil) and an error.
-	newArticle, err := crawler.CheckForUpdate(ctx)
-	if err != nil {
-		log.Fatalf("Fatal: Error during check: %v", err)
+	if err := ioutil.WriteFile("google_test.png", buf, 0644); err != nil {
+		log.Fatalf("Fatal: Failed to save Google screenshot: %v", err)
 	}
+	log.Println("Success! Screenshot saved as google_test.png.")
 
-	// Step 2: If the crawler found a new article, call the notifier.
-	if newArticle != nil {
-		log.Println("New article found, sending Feishu notification...")
-		if webhookURL != "" {
-			if err := notifier.Send(webhookURL, newArticle.Title, newArticle.URL); err != nil {
-				log.Printf("Error sending Feishu notification: %v", err)
-			}
-		}
+	// --- Test 2: Navigate to RoboMaster ---
+	log.Println("Attempting to navigate to https://bbs.robomaster.com/article ...")
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(`https://bbs.robomaster.com/article`),
+		chromedp.Sleep(15*time.Second), // Give it extra time
+		chromedp.CaptureScreenshot(&buf),
+	); err != nil {
+		// This is the expected failure point if the site is blocking us
+		log.Printf("Error: Failed to navigate to RoboMaster: %v. This likely confirms an IP block.", err)
+		// We save the (likely blank) screenshot anyway for analysis
 	}
-
-	log.Println("Check complete.")
+	if err := ioutil.WriteFile("robomaster_test.png", buf, 0644); err != nil {
+		log.Fatalf("Fatal: Failed to save RoboMaster screenshot: %v", err)
+	}
+	log.Println("RoboMaster navigation step finished. Screenshot saved as robomaster_test.png.")
+	log.Println("Diagnostic complete.")
 }
