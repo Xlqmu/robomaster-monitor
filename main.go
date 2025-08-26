@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -12,27 +11,30 @@ import (
 	"robomaster-monitor/internal/notifier"
 )
 
-func main() {
-	// --- Reads configuration securely from environment variables ---
-	username := os.Getenv("DJI_USERNAME")
-	password := os.Getenv("DJI_PASSWORD")
-	webhookURL := os.Getenv("FEISHU_WEBHOOK_URL")
+const (
+	// ==========================================================
+	// ===> 在这里修改频率 (Change the frequency here) <===
+	// ==========================================================
+	checkInterval = 15 * time.Minute
+)
 
-	if username == "" || password == "" {
-		log.Fatal("Error: DJI_USERNAME and DJI_PASSWORD environment variables must be set.")
+func main() {
+	// --- CONFIGURATION FOR LOCAL TESTING ---
+	const username = "18193854081"
+	const password = "nzh040911@"
+	const webhookURL = "https://open.feishu.cn/open-apis/bot/v2/hook/eeab5932-7217-4276-91f8-4ea5c344c7e9"
+
+	if username == "YOUR_USERNAME_HERE" || password == "YOUR_PASSWORD_HERE" {
+		log.Fatal("Error: Please fill in your username and password in main.go for local testing.")
 	}
-	if webhookURL == "" {
-		log.Println("Warning: FEISHU_WEBHOOK_URL is not set. Notifications will be skipped.")
+	if webhookURL == "YOUR_FEISHU_WEBHOOK_URL_HERE" {
+		log.Println("Warning: Feishu Webhook URL is not provided, notifications will be skipped.")
 	}
-	// --- End of Configuration ---
+	// --- END OF CONFIGURATION ---
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		// This MUST be true for GitHub Actions.
 		chromedp.Flag("headless", true),
-		// Required flags for running in a Linux/container environment.
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("start-maximized", true),
 		chromedp.UserAgent(`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36`),
 	)
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -49,17 +51,29 @@ func main() {
 	}
 	log.Println("Login successful, session is active.")
 
-	// For a scheduled task, we only need to check once per run.
+	// This loop makes the program run continuously.
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		runPipeline(ctx, webhookURL)
+		log.Printf("Next check in %v.", checkInterval)
+		<-ticker.C
+	}
+}
+
+// runPipeline executes one cycle of the check-and-notify process.
+func runPipeline(ctx context.Context, webhookURL string) {
 	newArticle, err := crawler.CheckForUpdate(ctx)
 	if err != nil {
-		log.Fatalf("Fatal: Error during check: %v", err)
+		log.Printf("Error during crawler check: %v", err)
+		return
 	}
 
-	// If the crawler found a new article, call the notifier.
 	if newArticle != nil {
 		log.Println("New article found, sending Feishu notification...")
-		if webhookURL != "" {
-			if err := notifier.Send(webhookURL, newArticle.Title, newArticle.URL); err != nil {
+		if webhookURL != "" && webhookURL != "YOUR_FEISHU_WEBHOOK_URL_HERE" {
+			if err := notifier.Send(newArticle.Title, newArticle.URL, webhookURL); err != nil {
 				log.Printf("Error sending Feishu notification: %v", err)
 			}
 		}
