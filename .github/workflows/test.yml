@@ -1,0 +1,36 @@
+name: Connectivity Test for RoboMaster Monitor
+
+on:
+  # Run this test manually
+  workflow_dispatch:
+
+jobs:
+  connectivity_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install Go dependencies
+        run: go mod tidy
+
+      - name: Run the diagnostic script
+        run: go run main.go
+      
+      - name: Upload screenshots as artifacts
+        if: always() # This step runs even if the previous step fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-screenshots
+          path: |
+            google_test.png
+            robomaster_test.png
