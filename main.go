@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	// Use your actual module name here from go.mod
+	// Make sure this is the correct module path from your go.mod file
 	"robomaster-monitor/internal/crawler"
 	"robomaster-monitor/internal/notifier"
 )
@@ -49,17 +49,13 @@ func main() {
 	}
 	log.Println("Login successful, session is active.")
 
-	// --- This is the complete pipeline logic ---
 	// For a scheduled task, we only need to check once per run.
-
-	// Step 1: Call the crawler to check for updates.
-	// It returns two values: the new article (or nil) and an error.
 	newArticle, err := crawler.CheckForUpdate(ctx)
 	if err != nil {
 		log.Fatalf("Fatal: Error during check: %v", err)
 	}
 
-	// Step 2: If the crawler found a new article, call the notifier.
+	// If the crawler found a new article, call the notifier.
 	if newArticle != nil {
 		log.Println("New article found, sending Feishu notification...")
 		if webhookURL != "" {

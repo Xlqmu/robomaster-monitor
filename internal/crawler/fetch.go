@@ -34,8 +34,21 @@ func Login(ctx context.Context, username, password string) error {
 	const successSelector = `img.user-header.g-avatar`
 	const postLoginLoadSelector = `a.articleItem`
 
-	log.Println("Navigating to article page to trigger login redirect...")
+	log.Println("Starting login process...")
 	err := chromedp.Run(ctx,
+		// WARM-UP STEP to stabilize the browser instance in the CI environment.
+		chromedp.ActionFunc(func(c context.Context) error {
+			log.Println("Performing warm-up navigation to Google...")
+			return nil
+		}),
+		chromedp.Navigate(`https://www.google.com`),
+		chromedp.Sleep(2*time.Second),
+		chromedp.ActionFunc(func(c context.Context) error {
+			log.Println("Warm-up complete. Proceeding to RoboMaster...")
+			return nil
+		}),
+
+		// Main login sequence
 		chromedp.Navigate(articleURL),
 		chromedp.WaitVisible(passwordTabSelector),
 		chromedp.Click(passwordTabSelector),
@@ -56,7 +69,6 @@ func Login(ctx context.Context, username, password string) error {
 }
 
 // CheckForUpdate is a public function that checks for a new article.
-// It returns a pointer to an Article if a new one is found, otherwise it returns nil.
 func CheckForUpdate(ctx context.Context) (*Article, error) {
 	log.Println("Checking for new articles...")
 
@@ -87,20 +99,15 @@ func CheckForUpdate(ctx context.Context) (*Article, error) {
 
 	var foundArticle *Article
 
-	// Find all article items and loop through them to find the first non-pinned one.
 	doc.Find(articleLinkSelector).EachWithBreak(func(i int, s *goquery.Selection) bool {
-		// If the article item has an SVG in its title area, it's pinned/official.
 		if s.Find("div.articleItem__titles svg").Length() > 0 {
 			log.Printf("Found pinned/official article, skipping: '%s'", s.Find("div.articleItem__title").Text())
-			return true // Continue to the next item
+			return true
 		}
-
-		// This is the first non-pinned article. Extract its details.
 		title := strings.TrimSpace(s.Find("div.articleItem__title").Text())
 		href, exists := s.Attr("href")
 		if !exists {
-			log.Println("Warning: Found an article item with no link, skipping.")
-			return true // Continue to the next item
+			return true
 		}
 
 		foundArticle = &Article{
@@ -108,11 +115,9 @@ func CheckForUpdate(ctx context.Context) (*Article, error) {
 			URL:   "https://bbs.robomaster.com" + href,
 			Href:  href,
 		}
-		// We have found the first valid article, so we stop the loop.
 		return false
 	})
 
-	// Now that the loop is finished, process the article we found (if any).
 	if foundArticle == nil {
 		log.Println("Warning: Could not find any non-pinned articles on the page.")
 		return nil, nil
@@ -124,16 +129,13 @@ func CheckForUpdate(ctx context.Context) (*Article, error) {
 		if err := updateLatestArticle(foundArticle.Href); err != nil {
 			log.Printf("Warning: Failed to update history file: %v", err)
 		}
-		// Return the found article because it's new.
 		return foundArticle, nil
 	} else {
 		log.Println("No new articles found.")
-		// The latest article is the same as the one we've seen before. Return nil.
 		return nil, nil
 	}
 }
 
-// loadLatestArticle and updateLatestArticle are private helper functions for this package.
 func loadLatestArticle() (string, error) {
 	if _, err := os.Stat(latestArticleFile); os.IsNotExist(err) {
 		return "", nil
