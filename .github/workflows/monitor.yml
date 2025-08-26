@@ -18,11 +18,12 @@ jobs:
         with:
           go-version: '1.21'
 
-      # --- THIS IS THE NEW, REQUIRED STEP ---
-      - name: Install Chrome Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxss1 libappindicator1 libindicator7 libgtk-3-0 libasound2 libnspr4 libnss3 xdg-utils fonts-liberation
+      # --- THIS IS THE NEW, MORE RELIABLE STEP ---
+      # This action installs a fresh version of Google Chrome and all its dependencies.
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+      
+      # We no longer need the manual apt-get install step.
 
       - name: Install Go dependencies
         run: go mod tidy
@@ -32,5 +33,5 @@ jobs:
           DJI_USERNAME: ${{ secrets.DJI_USERNAME }}
           DJI_PASSWORD: ${{ secrets.DJI_PASSWORD }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        # The 'run' command now happens after Chrome is fully set up.
         run: go run main.go
-        
