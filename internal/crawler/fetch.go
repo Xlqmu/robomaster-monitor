@@ -36,19 +36,7 @@ func Login(ctx context.Context, username, password string) error {
 
 	log.Println("Starting login process...")
 	err := chromedp.Run(ctx,
-		// WARM-UP STEP to stabilize the browser instance in the CI environment.
-		chromedp.ActionFunc(func(c context.Context) error {
-			log.Println("Performing warm-up navigation to Google...")
-			return nil
-		}),
-		chromedp.Navigate(`https://www.google.com`),
-		chromedp.Sleep(2*time.Second),
-		chromedp.ActionFunc(func(c context.Context) error {
-			log.Println("Warm-up complete. Proceeding to RoboMaster...")
-			return nil
-		}),
-
-		// Main login sequence
+		// Main login sequence (warm-up step has been removed)
 		chromedp.Navigate(articleURL),
 		chromedp.WaitVisible(passwordTabSelector),
 		chromedp.Click(passwordTabSelector),
