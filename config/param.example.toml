@@ -1,0 +1,13 @@
+[dji]
+username = "xxxxxxxxxxx" # 修改为自己的 DJI 账号
+password = "xxxxxxxxxxx" # 修改为自己的 DJI 密码
+
+[feishu]
+webhook_url = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" # 修改为自己的飞书机器人 webhook api地址
+
+[browser]
+headless = true
+no_sandbox = true
+disable_gpu = true
+disable_dev_shm_usage = true
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36"
