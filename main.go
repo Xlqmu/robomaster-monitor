@@ -15,7 +15,7 @@ const (
 	// ==========================================================
 	// ===> 在这里修改频率 (Change the frequency here) <===
 	// ==========================================================
-	checkInterval = 15 * time.Minute
+	checkInterval = 5 * time.Minute // 5min抓取一次不会出发滑块验证，具体阈值可自测
 )
 
 func main() {
@@ -73,7 +73,8 @@ func runPipeline(ctx context.Context, webhookURL string) {
 	if newArticle != nil {
 		log.Println("New article found, sending Feishu notification...")
 		if webhookURL != "" && webhookURL != "YOUR_FEISHU_WEBHOOK_URL_HERE" {
-			if err := notifier.Send(newArticle.Title, newArticle.URL, webhookURL); err != nil {
+			// CORRECTED ARGUMENT ORDER: The webhookURL is now the first argument.
+			if err := notifier.Send(webhookURL, newArticle.Title, newArticle.URL); err != nil {
 				log.Printf("Error sending Feishu notification: %v", err)
 			}
 		}
