@@ -50,6 +50,7 @@ RoboMaster论坛采用了一套复杂且有效的多层防爬虫机制。本监�
 1. 登陆验证
 2. IP地址信誉阻止
 3. 动态/自适应屏蔽：表现为成功抓取十次（约10min,未测试是时间还是次数限制）后被重定向
+4. 滑块验证（频率为1min/次会触发，重新手动登陆账号即可解除）
 
 ## 项目架构
 
@@ -61,9 +62,6 @@ robomaster-monitor/
 │   │    └── fetch.go        # 负责浏览器自动化、登录及抓取逻辑
 │   └── notifier/
 │        └── feishu.go       # 负责飞书消息的格式化与发送
-├── .github/
-│   └── workflows/
-│       └── monitor.yml      # 用于CI/CD和自动化部署的GitHub Actions配置
 ├── go.mod
 └── README.md
 ```
@@ -86,7 +84,7 @@ robomaster-monitor/
 
 2. 配置参数
 
-   在参数文件里配置相关参数
+   在参数文件里配置相关参数（将param.example.toml改为param.toml，具体参数自行替换）
 
 3. 安装依赖:
 
