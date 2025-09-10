@@ -3,9 +3,8 @@ package crawler
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"os"
+	"robomaster-monitor/internal/storage"
 	"strings"
 	"time"
 
@@ -20,9 +19,10 @@ const (
 
 // Article holds the information about a newly found article.
 type Article struct {
-	Title string
-	URL   string
-	Href  string // The unique part of the URL used for history comparison
+	Title  string
+	URL    string
+	Href   string // The unique part of the URL used for history comparison
+	Author string
 }
 
 // Login is a public function to perform the login sequence.
@@ -56,9 +56,9 @@ func Login(ctx context.Context, username, password string) error {
 	return nil
 }
 
-// CheckForUpdate is a public function that checks for a new article.
-func CheckForUpdate(ctx context.Context) (*Article, error) {
-	log.Println("Checking for new articles...")
+// CheckForUpdate
+func CheckForUpdate(ctx context.Context) ([]storage.Article, error) {
+	log.Println("🔍 检查新文章...")
 
 	var htmlContent string
 	const articleLinkSelector = `a.articleItem`
@@ -71,70 +71,75 @@ func CheckForUpdate(ctx context.Context) (*Article, error) {
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get page content after login: %w", err)
+		return nil, fmt.Errorf("获取页面内容失败: %w", err)
 	}
-	log.Println("Page content retrieved successfully, now parsing...")
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML: %w", err)
+		return nil, fmt.Errorf("解析HTML失败: %w", err)
 	}
 
-	lastSeenURL, err := loadLatestArticle()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load history file: %w", err)
-	}
+	var newArticles []storage.Article
+	var processedCount int
 
-	var foundArticle *Article
-
-	doc.Find(articleLinkSelector).EachWithBreak(func(i int, s *goquery.Selection) bool {
+	doc.Find(articleLinkSelector).Each(func(i int, s *goquery.Selection) {
+		// 跳过置顶文章
 		if s.Find("div.articleItem__titles svg").Length() > 0 {
-			log.Printf("Found pinned/official article, skipping: '%s'", s.Find("div.articleItem__title").Text())
-			return true
+			log.Printf("⏭️ 跳过置顶/官方文章: '%s'", s.Find("div.articleItem__title").Text())
+			return
 		}
+
+		// only process the first 10 articles
+		if processedCount >= 10 {
+			return
+		}
+		processedCount++
+
 		title := strings.TrimSpace(s.Find("div.articleItem__title").Text())
 		href, exists := s.Attr("href")
 		if !exists {
-			return true
+			return
 		}
 
-		foundArticle = &Article{
-			Title: title,
-			URL:   "https://bbs.robomaster.com" + href,
-			Href:  href,
+		author := strings.TrimSpace(s.Find(".articleItem__info-author").Text())
+		category := strings.TrimSpace(s.Find(".articleItem__category").Text())
+		postedTime := strings.TrimSpace(s.Find(".articleItem__info-time").Text())
+
+		fullURL := "https://bbs.robomaster.com" + href
+
+		// check if the article exists in the database
+		exists, err := storage.ArticleExists(fullURL)
+		if err != nil {
+			log.Printf("⚠️ 检查文章存在性失败: %v", err)
+			return
 		}
-		return false
+
+		if !exists {
+			newArticle := storage.Article{
+				Title:    title,
+				URL:      fullURL,
+				Author:   author,
+				Category: category,
+				PostedAt: postedTime,
+				Notified: false,
+			}
+
+			id, err := storage.SaveArticle(&newArticle)
+			if err != nil {
+				log.Printf("⚠️ 保存文章失败: %v", err)
+				return
+			}
+
+			newArticle.ID = id
+			newArticles = append(newArticles, newArticle)
+		}
 	})
 
-	if foundArticle == nil {
-		log.Println("Warning: Could not find any non-pinned articles on the page.")
-		return nil, nil
-	}
-
-	log.Printf("Latest article on site is: %s ('%s')", foundArticle.Href, foundArticle.Title)
-
-	if foundArticle.Href != lastSeenURL {
-		if err := updateLatestArticle(foundArticle.Href); err != nil {
-			log.Printf("Warning: Failed to update history file: %v", err)
-		}
-		return foundArticle, nil
+	if len(newArticles) > 0 {
+		log.Printf("🆕 发现 %d 篇新文章", len(newArticles))
 	} else {
-		log.Println("No new articles found.")
-		return nil, nil
+		log.Println("✅ 没有发现新文章")
 	}
-}
 
-func loadLatestArticle() (string, error) {
-	if _, err := os.Stat(latestArticleFile); os.IsNotExist(err) {
-		return "", nil
-	}
-	content, err := ioutil.ReadFile(latestArticleFile)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(content)), nil
-}
-
-func updateLatestArticle(latestLink string) error {
-	return ioutil.WriteFile(latestArticleFile, []byte(latestLink), 0644)
+	return newArticles, nil
 }

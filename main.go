@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -11,6 +12,7 @@ import (
 
 	"robomaster-monitor/internal/crawler"
 	"robomaster-monitor/internal/notifier"
+	"robomaster-monitor/internal/storage"
 )
 
 const (
@@ -19,6 +21,8 @@ const (
 	// ==========================================================
 	checkInterval = 5 * time.Minute // 5min抓取一次不会出发滑块验证，具体阈值可自测
 	configFile    = "config/param.toml"
+	dbFile        = "data/articles.db"
+	// ==========================================================
 )
 
 type Config struct {
@@ -42,7 +46,7 @@ type Config struct {
 
 var config Config
 
-// 加载配置文件
+// loadConfig
 func loadConfig(path string) {
 	if _, err := toml.DecodeFile(path, &config); err != nil {
 		log.Fatalf("❌  读取配置文件失败: %v", err)
@@ -50,7 +54,7 @@ func loadConfig(path string) {
 	log.Println("✅  配置文件加载成功")
 }
 
-// 启动热加载监听(支持运行时需盖参数)
+// watchConfig
 func watchConfig(path string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -84,7 +88,7 @@ func watchConfig(path string) {
 	}
 }
 
-// 执行一次任务流程
+// runPipeline
 func runPipeline() {
 	username := config.DJI.Username
 	password := config.DJI.Password
@@ -95,7 +99,7 @@ func runPipeline() {
 		return
 	}
 
-	// 浏览器启动参数
+	// create context
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", config.Browser.Headless),
 		chromedp.Flag("no-sandbox", config.Browser.NoSandbox),
@@ -104,62 +108,86 @@ func runPipeline() {
 		chromedp.UserAgent(config.Browser.UserAgent),
 	)
 
-	pipelineCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 
-	allocCtx, cancel := chromedp.NewExecAllocator(pipelineCtx, opts...)
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
 	defer cancel()
 
-	taskCtx, cancel := chromedp.NewContext(allocCtx)
+	// set timeout
+	ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
-	// 登录
-	if err := crawler.Login(taskCtx, username, password); err != nil {
-		log.Printf("❌  登录失败: %v", err)
-		return
-	}
-	log.Println("✅  登录成功")
-
-	// 检查更新
-	newArticle, err := crawler.CheckForUpdate(taskCtx)
+	// login
+	log.Println("🔐 开始登录...")
+	err := crawler.Login(ctx, username, password)
 	if err != nil {
-		log.Printf("❌  检查更新失败: %v", err)
+		log.Printf("❌ 登录失败: %v", err)
+		return
+	}
+	log.Println("✅ 登录成功")
+
+	// check for updates
+	newArticles, err := crawler.CheckForUpdate(ctx)
+	if err != nil {
+		log.Printf("❌ 检查更新失败: %v", err)
 		return
 	}
 
-	// 有新文章则通知
-	if newArticle != nil {
-		log.Println("🆕  检测到新文章，发送飞书通知...")
-		if webhookURL != "" {
-			if err := notifier.Send(webhookURL, newArticle.Title, newArticle.URL); err != nil {
-				log.Printf("❌  飞书通知失败: %v", err)
-			} else {
-				log.Println("📨  飞书通知发送成功")
+	// send notifications
+	if len(newArticles) > 0 {
+		log.Printf("🔔 准备通知 %d 篇新文章...", len(newArticles))
+
+		for _, article := range newArticles {
+			if webhookURL != "" {
+
+				log.Printf("📤 正在发送通知: %s", article.Title)
+				if err := notifier.Send(webhookURL, article.Title, article.URL); err != nil {
+					log.Printf("❌ 飞书通知失败: %v", err)
+				} else {
+					log.Println("✅ 飞书通知发送成功")
+					// update article as notified
+					if err := storage.MarkAsNotified(article.ID); err != nil {
+						log.Printf("⚠️ 更新通知状态失败: %v", err)
+					}
+				}
+
+				// avoid hitting rate limits
+				time.Sleep(1 * time.Second)
 			}
 		}
 	}
-
-	log.Println("✅  本次检查完成")
 }
-func main() {
-	log.Println("🚀  启动 RoboMaster Monitor...")
 
-	// 1. 加载一次配置
+func main() {
+	// 创建数据目录
+	if err := os.MkdirAll("data", 0755); err != nil {
+		log.Fatalf("❌ 创建数据目录失败: %v", err)
+	}
+
+	// 初始化数据库
+	if err := storage.InitDB(dbFile); err != nil {
+		log.Fatalf("❌ 初始化数据库失败: %v", err)
+	}
+	defer storage.Close()
+
+	// 加载配置
 	loadConfig(configFile)
 
-	// 2. 启动热加载监听
+	// 启动配置文件热加载监听
 	watchConfig(configFile)
 
-	// 3. 启动定时任务
-	ticker := time.NewTicker(checkInterval)
-	defer ticker.Stop()
+	log.Println("🚀 RoboMaster Monitor 启动成功")
 
 	// 立即运行一次
 	runPipeline()
 
-	// 循环执行
+	// 定时运行
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
 	for {
-		log.Printf("⏳  距离下次检测还有 %v ...", checkInterval)
+		log.Printf("⏱️ %v 后进行下一次检查", checkInterval)
 		<-ticker.C
 		runPipeline()
 	}
